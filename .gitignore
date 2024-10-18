@@ -127,5 +127,8 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
 main.py.bak
 test.py
+.idea/
+config - 副本.json
