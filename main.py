@@ -21,10 +21,6 @@ class BotMessageOptimizerPlugin(Plugin):
 
     @on(NormalMessageResponded)
     def optimize_message(self, event: EventContext, **kwargs):
-        # 检查消息是否已经被处理过
-        if hasattr(event, 'message_processed'):
-            self.logger.info("消息已被处理，跳过")
-            return
 
         original_message = kwargs['response_text']
         # 尝试处理消息中的图片链接，并返回处理后的消息
@@ -33,8 +29,12 @@ class BotMessageOptimizerPlugin(Plugin):
         # 如果有修改，则将处理后的消息返回
         if optimized_message:
             event.add_return('reply', optimized_message)
-            # 标记消息已被处理
-            setattr(event, 'message_processed', True)
+
+            # 阻止该事件默认行为
+            ctx.prevent_default()
+                  
+            # 阻止后续插件执行
+            ctx.prevent_postorder()
 
     def load_config(self):
         """加载配置文件"""
