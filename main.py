@@ -1,8 +1,8 @@
 import json
 import requests
 from urllib.parse import urlparse
-from pkg.plugin.models import *
-from pkg.plugin.host import EventContext, PluginHost
+from pkg.plugin.context import register, handler, llm_func, BasePlugin, APIHost, EventContext
+from pkg.plugin.events import *
 import re
 from mirai import Image, Plain
 import os
@@ -11,30 +11,24 @@ import os
 @register(name="Md2QQImage_Improved",
           description="优化 bot 发送的消息，将图片链接转换为实际图片，并且添加防盗链检测及格式检测功能", version="1.3",
           author="BiFangKNT")
-class BotMessageOptimizerPlugin(Plugin):
+class BotMessageOptimizerPlugin(BasePlugin):
 
-    def __init__(self, plugin_host: PluginHost):
-        super().__init__(plugin_host)
+    def __init__(self, host: APIHost):
+        super().__init__(host)
         # 匹配图片 URL 的正则表达式，支持 Markdown 和普通 URL
         self.config = self.load_config()
-        self.url_pattern = re.compile(r'!\[.*?\]\((https?://\S+)\)|https?://\S+')
+        self.url_pattern = re.compile(r'!\[.*?\]\((?P<img_url>https?://[^\s\)]+)\)|\[.*?\]\((?P<link_url>https?://[^\s\)]+)\)|(?P<plain_url>https?://[^\s\)]+)')
 
-    @on(NormalMessageResponded)
-    def optimize_message(self, event: EventContext, **kwargs):
+    @handler(NormalMessageResponded)
+    async def optimize_message(self, ctx: EventContext):
 
-        original_message = kwargs['response_text']
+        original_message = ctx.event.response_text
         # 尝试处理消息中的图片链接，并返回处理后的消息
         optimized_message = self.convert_message(original_message)
 
         # 如果有修改，则将处理后的消息返回
         if optimized_message:
-            event.add_return('reply', optimized_message)
-
-            # 阻止该事件默认行为
-            ctx.prevent_default()
-                  
-            # 阻止后续插件执行
-            ctx.prevent_postorder()
+            ctx.add_return('reply', optimized_message)
 
     def load_config(self):
         """加载配置文件"""
@@ -74,9 +68,13 @@ class BotMessageOptimizerPlugin(Plugin):
             if self.is_image_url(image_url):
                 parts.append(Image(url=image_url))
             else:
-                # 如果图片检测失败，输出提示语并保留原始文本
-                parts.append(Plain("链接无法访问，请检查 URL 是否正确。\n"))
-                parts.append(Plain(match.group(0)))
+                # 处理 markdown 格式的链接（包括图片和普通链接）
+                if match.group('img_url') or match.group('link_url'):
+                    url = match.group('img_url') or match.group('link_url')  # 获取匹配到的 URL
+                    markdown_prefix = match.group(0)[:match.group(0).index(url)]  # 获取URL前的部分
+                    parts.append(Plain(f"{markdown_prefix}{url} )"))  # 在URL和右括号之间添加空格
+                else:  # 如果是普通 URL
+                    parts.append(Plain(match.group('plain_url')))
 
             last_end = end
 
