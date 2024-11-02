@@ -4,7 +4,6 @@ from urllib.parse import urlparse
 from pkg.plugin.context import register, handler, llm_func, BasePlugin, APIHost, EventContext
 from pkg.plugin.events import *
 import re
-from mirai import Image, Plain
 import os
 
 
@@ -43,44 +42,47 @@ class BotMessageOptimizerPlugin(BasePlugin):
     def convert_message(self, message):
         parts = []  # 存储消息的各部分
         last_end = 0  # 上次匹配结束的位置
+        first_image_processed = False  # 标记是否已处理第一个图片
 
         for match in self.url_pattern.finditer(message):
             start, end = match.span()
             # 添加匹配到 URL 前的文本部分
             if start > last_end:
-                parts.append(Plain(message[last_end:start]))
+                parts.append(mirai.Plain(message[last_end:start]))
 
             # 提取 URL（无论是 Markdown 还是普通 URL）
             image_url = match.group(1) if match.group(1) else match.group(0)
 
-            # 检查 URL 是否为常见的图片后缀
-            if self.has_image_suffix(image_url):
-                domain = self.get_domain(image_url)
+            # 只对第一个URL进行图片检测和转换
+            if not first_image_processed:
+                if self.has_image_suffix(image_url):
+                    domain = self.get_domain(image_url)
+                    if domain in self.config:
+                        site_name = self.config[domain]
+                        parts.append(mirai.Plain(f"检测到 {site_name} 网站有防盗链机制，请安装`QChatGPT_AntiHotlinkImageFetcher`插件后，使用“{site_name}：id”的格式获取图片。\n"))
+                        first_image_processed = True
+                        last_end = end
+                        continue
 
-                if domain in self.config:
-                    # 如果域名在配置中，则输出相应的提示信息
-                    site_name = self.config[domain]  # 获取配置的值
-                    parts.append(Plain(f"检测到 {site_name} 网站有防盗链机制，请安装`QChatGPT_AntiHotlinkImageFetcher`插件后，使用“{site_name}：id”的格式获取图片。\n"))
-                    last_end = end  # 跳过该图片的处理
+                if self.is_image_url(image_url):
+                    parts.append(mirai.Image(url=image_url))
+                    first_image_processed = True
+                    last_end = end
                     continue
 
-            # 如果没有检测到防盗链限制，或者图片后缀不符合，继续进行 HTTP 检测
-            if self.is_image_url(image_url):
-                parts.append(Image(url=image_url))
+            # 对其他URL只进行格式转换
+            if match.group('img_url') or match.group('link_url'):
+                url = match.group('img_url') or match.group('link_url')
+                markdown_prefix = match.group(0)[:match.group(0).index(url)]
+                parts.append(mirai.Plain(f"{markdown_prefix}{url} )"))
             else:
-                # 处理 markdown 格式的链接（包括图片和普通链接）
-                if match.group('img_url') or match.group('link_url'):
-                    url = match.group('img_url') or match.group('link_url')  # 获取匹配到的 URL
-                    markdown_prefix = match.group(0)[:match.group(0).index(url)]  # 获取URL前的部分
-                    parts.append(Plain(f"{markdown_prefix}{url} )"))  # 在URL和右括号之间添加空格
-                else:  # 如果是普通 URL
-                    parts.append(Plain(match.group('plain_url')))
+                parts.append(mirai.Plain(match.group('plain_url')))
 
             last_end = end
 
         # 添加最后一段未处理的文本
         if last_end < len(message):
-            parts.append(Plain(message[last_end:]))
+            parts.append(mirai.Plain(message[last_end:]))
 
         # 返回拼接后的消息，如果没有修改则返回原消息
         return parts if parts else message
