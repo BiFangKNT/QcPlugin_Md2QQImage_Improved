@@ -3,6 +3,7 @@ import requests
 from urllib.parse import urlparse
 from pkg.plugin.context import register, handler, llm_func, BasePlugin, APIHost, EventContext
 from pkg.plugin.events import *
+import pkg.platform.types as platform_types
 import re
 import os
 
@@ -48,7 +49,7 @@ class BotMessageOptimizerPlugin(BasePlugin):
             start, end = match.span()
             # 添加匹配到 URL 前的文本部分
             if start > last_end:
-                parts.append(mirai.Plain(message[last_end:start]))
+                parts.append(platform_types.Plain(message[last_end:start]))
 
             # 提取 URL（无论是 Markdown 还是普通 URL）
             image_url = match.group(1) if match.group(1) else match.group(0)
@@ -59,13 +60,13 @@ class BotMessageOptimizerPlugin(BasePlugin):
                     domain = self.get_domain(image_url)
                     if domain in self.config:
                         site_name = self.config[domain]
-                        parts.append(mirai.Plain(f"检测到 {site_name} 网站有防盗链机制，请安装`QChatGPT_AntiHotlinkImageFetcher`插件后，使用“{site_name}：id”的格式获取图片。\n"))
+                        parts.append(platform_types.Plain(f"检测到 {site_name} 网站有防盗链机制，请安装`QChatGPT_AntiHotlinkImageFetcher`插件后，使用“{site_name}：id”的格式获取图片。\n"))
                         first_image_processed = True
                         last_end = end
                         continue
 
                 if self.is_image_url(image_url):
-                    parts.append(mirai.Image(url=image_url))
+                    parts.append(platform_types.Image(url=image_url))
                     first_image_processed = True
                     last_end = end
                     continue
@@ -74,15 +75,15 @@ class BotMessageOptimizerPlugin(BasePlugin):
             if match.group('img_url') or match.group('link_url'):
                 url = match.group('img_url') or match.group('link_url')
                 markdown_prefix = match.group(0)[:match.group(0).index(url)]
-                parts.append(mirai.Plain(f"{markdown_prefix}{url} )"))
+                parts.append(platform_types.Plain(f"{markdown_prefix}{url} )"))
             else:
-                parts.append(mirai.Plain(match.group('plain_url')))
+                parts.append(platform_types.Plain(match.group('plain_url')))
 
             last_end = end
 
         # 添加最后一段未处理的文本
         if last_end < len(message):
-            parts.append(mirai.Plain(message[last_end:]))
+            parts.append(platform_types.Plain(message[last_end:]))
 
         # 返回拼接后的消息，如果没有修改则返回原消息
         return parts if parts else message
